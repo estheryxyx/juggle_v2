@@ -246,6 +246,24 @@ a.evrow{color:inherit;text-decoration:none}
 .mi .mv:hover{background:var(--accent);color:var(--surface)}
 @media (max-width:700px){.mx{grid-template-columns:1fr}}
 
+/* sign-in */
+.auth{position:fixed;inset:0;z-index:100;background:var(--bg);display:grid;place-items:center;padding:16px;overflow:auto}
+.authbox{width:min(360px,100%);display:flex;flex-direction:column;gap:14px}
+.authbox h1{font:600 24px var(--ui);margin:0;letter-spacing:-.015em}
+.authbox .primary{padding:9px 14px;font-size:14px}
+.authbox .f input{font-size:16px;padding:9px 11px}
+.authcode{display:flex;flex-direction:column;gap:8px;padding-top:6px;border-top:1px solid var(--line)}
+.acct{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.acct .textbtn{font-size:12px;padding:2px 6px}
+
+/* shorthand */
+#shorthand{width:min(620px,calc(100vw - 32px))}
+.sh{border-collapse:collapse;font-size:13px}
+.sh td{padding:7px 10px 7px 0;border-top:1px solid var(--line);vertical-align:top}
+.sh td:first-child{white-space:nowrap;padding-right:16px}
+.sh code{font:400 12px var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 4px}
+@media (max-width:560px){.sh td{display:block;border:0;padding:2px 0}.sh tr{display:block;border-top:1px solid var(--line);padding:6px 0}.sh td:first-child{white-space:normal}}
+
 /* dialogs */
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0;width:min(440px,calc(100vw - 32px));box-shadow:0 16px 48px rgba(0,0,0,.18)}
 dialog::backdrop{background:rgba(10,12,16,.35)}
@@ -277,6 +295,12 @@ dialog h2{font-size:15px}
   .cal-scroll{overflow:visible}
   .sum{overflow:visible}
   .top{gap:10px;padding:10px 16px}
+  .week{flex-wrap:nowrap;width:100%;order:3}
+  #chips{flex-wrap:nowrap;overflow-x:auto;flex:1;min-width:0;scrollbar-width:none}
+  #chips::-webkit-scrollbar{display:none}
+  .daychip{min-width:40px;flex:none}
+  .top .spacer{display:none}
+  .brand{flex:1}
   .crow{grid-template-columns:28px 1fr 56px 24px}
   .crow .kw{grid-column:2/-1}
   .chead{display:none}
@@ -285,6 +309,20 @@ dialog h2{font-size:15px}
 </style>
 </head>
 <body>
+<div class="auth" id="auth" hidden>
+  <form class="authbox" id="authForm">
+    <div class="brand">Juggle</div>
+    <h1>Sign in</h1>
+    <div class="sub">Use the same email on your laptop and your phone to see the same to-dos. No password: we email you a sign-in link.</div>
+    <label class="f">Email<input type="email" id="authEmail" autocomplete="email" required></label>
+    <button type="submit" class="primary" id="authSend">Email me a sign-in link</button>
+    <div class="authcode" id="authCodeRow" hidden>
+      <label class="f">Or type the code from the email<input id="authCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10"></label>
+      <button type="button" class="textbtn" id="authVerify" style="align-self:flex-start;padding-left:0">Sign in with the code</button>
+    </div>
+    <div class="sub" id="authMsg" role="status"></div>
+  </form>
+</div>
 <div class="app" id="app">
   <header class="top">
     <div class="brand">Juggle</div>
@@ -307,7 +345,8 @@ dialog h2{font-size:15px}
         <textarea id="cap" rows="1" placeholder="Add a to-do, or paste a whole list"></textarea>
         <div class="caprow">
           <button class="primary" id="capAdd">Add</button>
-          <span id="capNote">A day or date on its own line starts that day. In a line, use a time, "by fri", "!" or "note:".</span>
+          <span id="capNote">"@3pm" makes an event, "by fri" a deadline.</span>
+          <button class="textbtn" id="shBtn" type="button">All shorthand</button>
         </div>
       </div>
       <div id="list"></div>
@@ -399,6 +438,27 @@ dialog h2{font-size:15px}
   </form>
 </dialog>
 
+<dialog id="shorthand">
+  <form id="shForm">
+    <h2>Shorthand</h2>
+    <table class="sh">
+      <tr><td><code>monday</code> on its own line</td><td>Lines below go on Monday. Also <code>tmr</code>, <code>next fri</code>, <code>2 dec</code></td></tr>
+      <tr><td><code>later</code> on its own line</td><td>Lines below go to Later</td></tr>
+      <tr><td><code>dinner thu 7pm</code></td><td>Event on Thursday at 19:00: a day in the line moves just that line</td></tr>
+      <tr><td><code>supo @11</code>, <code>case prep @1-3</code></td><td>Event. Use <code>@</code> when the time has no am or pm</td></tr>
+      <tr><td><code>7pm</code>, <code>7.30</code>, <code>14:00</code>, <code>2-3pm</code></td><td>Also read as times, so the line becomes an event</td></tr>
+      <tr><td><code>[] do li15 @3</code></td><td>A to-do placed at 15:00 that you can tick off and time</td></tr>
+      <tr><td><code>essay by fri (4h)</code></td><td>To-do with a deadline and estimate; Juggle picks the day to start</td></tr>
+      <tr><td><code>! book venue</code></td><td>Important: shows in This week</td></tr>
+      <tr><td><code>do a and then b</code></td><td>Two to-dos, in order</td></tr>
+      <tr><td><code>epistemics?</code></td><td>A maybe</td></tr>
+      <tr><td><code>note: summit in feb</code></td><td>A note, not a to-do</td></tr>
+    </table>
+    <div class="sub">Plain numbers such as "supo 11" stay as text, so codes like li15 never turn into times.</div>
+    <div class="acts"><div class="spacer"></div><button type="submit" class="primary">Close</button></div>
+  </form>
+</dialog>
+
 <dialog id="goalDlg">
   <form id="goalForm">
     <h2 id="goalHead">Goal</h2>
@@ -430,6 +490,9 @@ dialog h2{font-size:15px}
   </form>
 </dialog>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="config.js"></script>
 <script>
 (function(){
 'use strict';
@@ -442,7 +505,7 @@ function addDays(s,n){var d=fromYmd(s);d.setDate(d.getDate()+n);return ymd(d);}
 function uid(){return Math.random().toString(36).slice(2,10);}
 function cleanLine(l){
   return l.replace(/[⁠​‌‍﻿ ]/g,' ')
-          .replace(/^\s*(?:[•·\-*–—▪◦‣]+|\d+[.)]|\[[ xX]?\])\s*/,'').replace(/\s+/g,' ').trim();
+          .replace(/^\s*(?:(?:[•·\-*–—▪◦‣]+|\d+[.)](?=\s)|\[[ xX]?\])\s*)+/,'').replace(/\s+/g,' ').trim();
 }
 function toMin(h,m,ap){
   h=+h;m=m?+m:0;
@@ -455,19 +518,19 @@ function parseTime(line){
   var dur=null,s=line,m;
   m=/(?:^|\s)for\s+(\d+(?:\.\d+)?)\s*(hours?|hrs?|h|minutes?|mins?|m)(?![a-z0-9])/i.exec(s);
   if(m){dur=Math.round(parseFloat(m[1])*(/^h/i.test(m[2])?60:1));s=s.replace(m[0],' ');}
-  var rng=/(?:(?:from|at|@)\s*)?(?<![a-z0-9])(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?(?![a-z0-9])/i;
+  var rng=/(?:(?<![a-z0-9])(from|at|@)\s*)?(?<![a-z0-9.:£$€])(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?(?![a-z0-9])/i;
   m=rng.exec(s);
-  if(m&&(m[3]||m[6]||m[2]||m[5])){
-    var a=toMin(m[1],m[2],m[3]||m[6]),b=toMin(m[4],m[5],m[6]||m[3]);
+  if(m&&(m[1]||m[4]||m[7]||m[3]||m[6])){
+    var a=toMin(m[2],m[3],m[4]||m[7]),b=toMin(m[5],m[6],m[7]||m[4]);
     if(a!=null&&b!=null){
-      if(!m[3]&&a>=b&&a>=720)a-=720;
+      if(!m[4]&&a>=b&&a>=720)a-=720;
       if(b>a)return {start:a,dur:b-a,rest:tidy(s.replace(m[0],' '))};
     }
   }
   var pats=[
     /(?:(?<![a-z0-9])(by|at|@)\s*)?(?<![a-z0-9])(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)(?![a-z0-9])/i,
     /(?<![a-z0-9])(at|@)\s*(\d{1,2})(?:[:.](\d{2}))?(?![a-z0-9:.])()/i,
-    /(?<![a-z0-9.:])()([01]?\d|2[0-3]):([0-5]\d)(?![a-z0-9])()/
+    /(?<![a-z0-9.:£$€])()([01]?\d|2[0-3])[:.]([0-5]\d)(?![a-z0-9]|[.:]\d)()/
   ];
   for(var i=0;i<pats.length;i++){
     m=pats[i].exec(s);
@@ -520,11 +583,16 @@ function parseDate(str,today){
   }
   return null;
 }
+var MONFULL='(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+var INLINERX='(?:today|tonight|tomorrow|tmrw?|(?:(?:next|this) )?'+DAYRX+'(?:,? \\d{1,2}(?:st|nd|rd|th)?(?: '+MONFULL+')?)?|\\d{1,2}(?:st|nd|rd|th)? (?:of )?'+MONFULL+'|'+MONFULL+' \\d{1,2}(?:st|nd|rd|th)?|\\d{1,2}/\\d{1,2})';
 function startByOf(due,est){return addDays(due,-(1+Math.ceil((est||1)/2)));}
 function parseList(text,today,defDate,cats){
   var out={tasks:[],blocks:[],notes:[]},date=defDate,explicit=false,lines=String(text).split(/\r?\n/),order=Date.now(),m;
+  var inlineRx=new RegExp('(^|[\\s,(])(?:on\\s+)?('+INLINERX+')(?=$|[\\s,.:;)!?])','i');
   var headRx=new RegExp('^'+DATERX+'$','i'),dueRx=new RegExp('(?:^|[\\s,(])(?:due|by|deadline|before)[:\\s]+('+DATERX+')(?![a-z0-9])\\)?','i');
   for(var i=0;i<lines.length;i++){
+    var raw=String(lines[i]).replace(/[\u2060\u200b\u200c\u200d\ufeff\u00a0]/g,' ');
+    var forceTodo=/^\s*(?:[•·\-*–—▪◦‣]+\s*)?\[\s*\]/.test(raw);
     var line=cleanLine(lines[i]);if(!line)continue;
     var key=line.toLowerCase().replace(/[:,.]+$/,'');
     if(key==='later'||key==='someday'||key==='sometime'){date=null;explicit=true;continue;}
@@ -535,17 +603,22 @@ function parseList(text,today,defDate,cats){
     if(/^!+\s*|\s*!+$/.test(line)){important=true;line=line.replace(/^!+\s*|\s*!+$/g,'');}
     m=dueRx.exec(line);
     if(m){due=parseDate(m[1],today);if(due)line=tidy(line.replace(m[0],' '));}
-    if(!due&&/(?:^|\s)by\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)(?![a-z])/i.test(line))due=date||today;
+    var ldate=date,lexplicit=explicit;
+    m=inlineRx.exec(line);
+    if(m){var dd=parseDate(m[2],today);if(dd){ldate=dd;lexplicit=true;line=tidy(line.slice(0,m.index)+m[1]+' '+line.slice(m.index+m[0].length));}}
+    if(!due&&/(?:^|\s)by\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)(?![a-z])/i.test(line))due=ldate||today;
     m=/\s*(?:~|\()\s*(\d+(?:\.\d+)?)\s*h(?:rs?|ours?)?\s*\)?(?![a-z0-9])/i.exec(line);
     if(m){est=parseFloat(m[1]);line=tidy(line.replace(m[0],' '));}
     if(!line)continue;
     var tm=parseTime(line);
-    if(tm&&tm.rest&&date){
-      out.blocks.push({id:uid(),kind:'event',title:tm.rest,cat:categorize(tm.rest,cats),date:date,start:tm.start,dur:tm.dur,repeat:''});
+    if(tm&&tm.rest&&ldate){
+      if(forceTodo){
+        out.tasks.push({id:uid(),title:tm.rest,cat:categorize(tm.rest,cats),date:ldate,start:tm.start,dur:tm.dur,done:false,maybe:/\?\s*$/.test(tm.rest),order:order++,important:important,due:due,est:est,goal:null,q:null});
+      }else out.blocks.push({id:uid(),kind:'event',title:tm.rest,cat:categorize(tm.rest,cats),date:ldate,start:tm.start,dur:tm.dur,repeat:''});
       continue;
     }
-    var tdate=date;
-    if(due&&!explicit){tdate=startByOf(due,est);if(tdate<today)tdate=today;if(tdate>due)tdate=due;}
+    var tdate=ldate;
+    if(due&&!lexplicit){tdate=startByOf(due,est);if(tdate<today)tdate=today;if(tdate>due)tdate=due;}
     var parts=line.split(/\s*,?\s*(?<![a-z])(?:and\s+then|then)\s+/i).map(tidy).filter(Boolean);
     var lineCat=categorize(line,cats);
     for(var p=0;p<parts.length;p++){
@@ -619,32 +692,125 @@ function prune(){
 }
 function commit(){state.updatedAt=Date.now();prune();saveLocal();push();render();}
 function setSync(s){sync=s;var el=$('syncNote');if(el)el.textContent=syncText();}
-function syncText(){return sync==='synced'?'Synced to your account':sync==='connecting'?'Connecting…':sync==='offline'?'Can’t reach sync yet. Changes are kept on this device.':'Saved on this device';}
-function push(){if(!ref)return;dirty=true;if(writing)return;clearTimeout(pushT);pushT=setTimeout(doPush,700);}
-function doPush(){
-  if(!ref||writing)return;writing=true;dirty=false;
-  ref.set(JSON.parse(JSON.stringify(state))).then(function(){setSync('synced');},function(e){
-    if(e&&e.code==='unavailable')setSync('offline');else{ref=null;setSync('local');}
-  }).then(function(){writing=false;if(dirty)push();});
-}
+function syncText(){return sync==='synced'?'Synced to your account':sync==='connecting'?'Connecting…':sync==='offline'?'Offline. Changes are kept on this device and sync when you reconnect.':sync==='error'?'Couldn’t save to your account. Changes are kept on this device.':cloudOn?'Saved on this device':'Saved on this device. Sign-in is not set up yet.';}
+// ---------- account and cloud sync (Supabase) ----------
 function busy(){var a=document.activeElement;return !!drag||$('editor').open||$('settings').open||$('goalDlg').open||$('backup').open||$('matrix').open||!!(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&a.type!=='checkbox'&&a.value);}
-function initSync(){
-  cap('db').then(function(db){
-    if(!db)return;
-    try{ref=db.doc('planner/state');}catch(e){ref=null;return;}
-    setSync('connecting');
-    var t=setTimeout(function(){if(sync==='connecting')setSync('offline');},10000);
-    ref.onSnapshot(function(snap){
-      var live=!snap.metadata.fromCache;if(live)clearTimeout(t);
-      if(!snap.exists){if(live){setSync('synced');if(state.updatedAt)push();}return;}
-      if(snap.metadata.hasPendingWrites)return;
-      var d=snap.data()||{},ru=+d.updatedAt||0;
-      if(ru>state.updatedAt){if(!busy()){state=normalize(JSON.parse(JSON.stringify(d)));saveLocal();render();}}
-      else if(ru<state.updatedAt)push();
-      if(live&&sync!=='synced')setSync('synced');
-    },function(){clearTimeout(t);ref=null;setSync('local');});
+var hydrated=false,freshDevice=false;
+function mergeInto(remote,local){
+  var out=normalize(JSON.parse(JSON.stringify(remote))),added=0;
+  ['cats','tasks','blocks','notes','goals','joys'].forEach(function(k){
+    var have={};out[k].forEach(function(x){have[x.id]=1;});
+    (local[k]||[]).forEach(function(x){if(x&&x.id&&!have[x.id]&&!(k==='cats'&&DEFAULT_CATS.some(function(c){return c.id===x.id;}))){out[k].push(x);added++;}});
+  });
+  var key=function(x){return x.cat+'|'+x.s;},hs={};out.sessions.forEach(function(x){hs[key(x)]=1;});
+  (local.sessions||[]).forEach(function(x){if(!hs[key(x)]){out.sessions.push(x);added++;}});
+  if(!out.timer&&local.timer)out.timer=local.timer;
+  if(added)out.updatedAt=Date.now();
+  return out;
+}
+var CFG=window.JUGGLE_CONFIG||{},supa=null,acct=null,cloudTs=0,writing=false,dirty=false,pushT=null,pullT=null,TABLE='juggle_state',LSU='daybook.uid';
+var cloudOn=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey&&window.supabase&&window.supabase.createClient);
+function netErr(err){return navigator.onLine===false||/fetch|network|load failed/i.test(String(err&&err.message||err||''));}
+function push(){if(!acct)return;dirty=true;if(writing||!hydrated)return;clearTimeout(pushT);pushT=setTimeout(doPush,800);}
+function upsertNow(){
+  var snap=JSON.parse(JSON.stringify(state));
+  return supa.from(TABLE).upsert({user_id:acct.id,state:snap,updated_at:new Date().toISOString()}).then(function(r){
+    if(r&&r.error)throw r.error;cloudTs=Math.max(cloudTs,+snap.updatedAt||0);
   });
 }
+function doPush(){
+  if(!acct||writing)return;writing=true;dirty=false;
+  upsertNow().then(function(){setSync('synced');},function(e){setSync(netErr(e)?'offline':'error');})
+    .then(function(){writing=false;if(dirty)push();});
+}
+function pull(){
+  if(!acct)return;
+  if(writing){clearTimeout(pullT);pullT=setTimeout(pull,1500);return;}
+  var id=acct.id;
+  supa.from(TABLE).select('state').eq('user_id',id).maybeSingle().then(function(r){
+    if(!acct||acct.id!==id)return;
+    if(r.error){setSync(netErr(r.error)?'offline':'error');return;}
+    if(!hydrated&&busy()){clearTimeout(pullT);pullT=setTimeout(pull,2000);return;}
+    var first=!hydrated;hydrated=true;
+    if(!r.data){if(state.updatedAt)push();else setSync('synced');return;}
+    var d=r.data.state||{},ru=+d.updatedAt||0;cloudTs=Math.max(cloudTs,ru);
+    if(first&&freshDevice){
+      freshDevice=false;state=mergeInto(d,state);saveLocal();render();
+      if(state.updatedAt>ru)push();else setSync('synced');
+      return;
+    }
+    if(ru>state.updatedAt){
+      if(busy()){clearTimeout(pullT);pullT=setTimeout(pull,4000);return;}
+      state=normalize(JSON.parse(JSON.stringify(d)));saveLocal();render();
+    }else if(ru<state.updatedAt){push();return;}
+    setSync('synced');
+  },function(e){setSync(netErr(e)?'offline':'error');});
+}
+var chan=null;
+function listen(){
+  if(chan){try{supa.removeChannel(chan);}catch(e){}chan=null;}
+  try{chan=supa.channel('juggle-'+acct.id).on('postgres_changes',{event:'*',schema:'public',table:TABLE,filter:'user_id=eq.'+acct.id},function(){pull();}).subscribe();}catch(e){chan=null;}
+}
+function setUser(u){
+  var id=u&&u.id||null;
+  if((acct&&acct.id||null)===id){if(!id)showAuth(true);return;}
+  acct=u;
+  if(!u){showAuth(true);setSync('local');renderSum();return;}
+  var prev=null;try{prev=localStorage.getItem(LSU);}catch(e){}
+  hydrated=false;freshDevice=prev!==u.id;
+  if(prev&&prev!==u.id){state=blank();saveLocal();}
+  try{localStorage.setItem(LSU,u.id);}catch(e){}
+  showAuth(false);setSync('connecting');render();pull();listen();
+}
+function showAuth(on){
+  $('auth').hidden=!on;$('app').setAttribute('aria-hidden',on?'true':'false');
+  if(on){try{$('app').inert=true;}catch(e){}setTimeout(function(){if(!$('authEmail').value)$('authEmail').focus();},0);}
+  else{try{$('app').inert=false;}catch(e){}}
+}
+function signOut(){
+  if(!supa)return;
+  clearTimeout(pushT);
+  function done(){
+    supa.auth.signOut().catch(function(){}).then(function(){
+      if(chan){try{supa.removeChannel(chan);}catch(e){}chan=null;}
+      acct=null;hydrated=false;stopTimer();state=blank();cloudTs=0;
+      try{localStorage.removeItem(LS);localStorage.removeItem(LSU);}catch(e){}
+      render();showAuth(true);setSync('local');
+    });
+  }
+  if(acct&&hydrated&&state.updatedAt>cloudTs)upsertNow().then(done,done);else done();
+}
+function initSync(){
+  if(!cloudOn){setSync('local');renderSum();return;}
+  supa=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  var m=/error_description=([^&]+)/.exec(location.hash||'');
+  if(m){$('authMsg').textContent='That sign-in link did not work ('+decodeURIComponent(m[1].replace(/\+/g,' '))+'). Request a new one below.';try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}}
+  supa.auth.onAuthStateChange(function(ev,session){setUser(session&&session.user||null);});
+  supa.auth.getSession().then(function(r){setUser(r&&r.data&&r.data.session&&r.data.session.user||null);},function(){setUser(null);});
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)pull();});
+  window.addEventListener('online',function(){if(acct){if(state.updatedAt>cloudTs)push();else pull();}});
+  setInterval(function(){if(acct&&!document.hidden)pull();},60000);
+}
+var authEmail='';
+$('authForm').addEventListener('submit',function(e){
+  e.preventDefault();if(!supa)return;
+  var email=$('authEmail').value.trim();if(!email){$('authEmail').focus();return;}
+  var btn=$('authSend');btn.disabled=true;btn.textContent='Sending…';
+  supa.auth.signInWithOtp({email:email,options:{emailRedirectTo:location.origin+location.pathname}}).then(function(r){
+    btn.disabled=false;btn.textContent='Email me a sign-in link';
+    if(r.error){$('authMsg').textContent=/rate|seconds/i.test(r.error.message)?'Too many emails just now. Wait a minute, then try again.':'Could not send the email: '+r.error.message;return;}
+    authEmail=email;$('authCodeRow').hidden=false;
+    $('authMsg').textContent='Sent. Open the link in the email on this device, or type the code from it above.';
+  },function(err){btn.disabled=false;btn.textContent='Email me a sign-in link';$('authMsg').textContent=netErr(err)?'You seem to be offline. Connect and try again.':'Could not send the email. Try again.';});
+});
+function verifyCode(){
+  var code=$('authCode').value.replace(/\s+/g,'');if(!code||!supa)return;
+  supa.auth.verifyOtp({email:authEmail||$('authEmail').value.trim(),token:code,type:'email'}).then(function(r){
+    if(r.error)$('authMsg').textContent='That code did not work. Check it, or request a new email.';
+  },function(){$('authMsg').textContent='Could not check the code. Try again.';});
+}
+$('authVerify').addEventListener('click',verifyCode);
+$('authCode').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();verifyCode();}});
 
 // ---------- timer ----------
 function stopTimer(){
@@ -817,8 +983,9 @@ function renderCal(){
   var wh=$('weekHead');wh.hidden=!wk;$('calInner').style.minWidth=wk?'680px':'';
   if(wk)wh.innerHTML=days.map(function(d){var x=fromYmd(d);return '<button data-date="'+d+'"'+(d===t?' class="tdy"':'')+' aria-label="Open '+DNL[x.getDay()]+' '+x.getDate()+'">'+DN[x.getDay()]+'<b>'+x.getDate()+'</b></button>';}).join('');
   $('calSeg').querySelectorAll('button').forEach(function(bn){bn.setAttribute('aria-pressed',String(bn.dataset.cal===calMode));});
-  $('gBtn').hidden=gState!=='ask';
-  $('gNote').textContent=gState==='reauth'?'Reconnect Google Calendar in claude.ai Settings → Connectors':gState==='missing'?'Add Google Calendar in claude.ai Settings → Connectors to see it here':'';
+  var gb=$('gBtn');gb.hidden=['ask','connect','expired','denied','blocked'].indexOf(gState)<0;
+  gb.textContent=gState==='expired'?'Reconnect Google Calendar':gState==='ask'?'Show Google Calendar':'Connect Google Calendar';
+  $('gNote').textContent=gState==='denied'?'Google Calendar access was not given.':gState==='blocked'?'Google sign-in was blocked. Allow pop-ups for this site, then try again.':gState==='noload'?'Google sign-in did not load. Check your connection and reload.':gState==='reauth'?'Reconnect Google Calendar in claude.ai Settings → Connectors':gState==='missing'?'Add Google Calendar in claude.ai Settings → Connectors to see it here':'';
 }
 function timeHtml(){
   var a,b,label;
@@ -871,7 +1038,7 @@ function goalsHtml(){
 function renderSum(){
   var sp=$('sumPanel'),act=document.activeElement,fid=act&&act.id&&sp.contains(act)?act.id:null;
   sp.innerHTML='<div class="seg" role="group" aria-label="Panel">'+[['time','Time'],['notes','Notes'],['goals','Goals']].map(function(p){return '<button data-panel="'+p[0]+'" aria-pressed="'+(panel===p[0])+'">'+p[1]+'</button>';}).join('')+'</div>'+
-    (panel==='notes'?notesHtml():panel==='goals'?goalsHtml():timeHtml())+'<div class="foot"><span id="syncNote">'+syncText()+'</span><button class="textbtn" id="bkBtn" style="align-self:flex-start;padding-left:0">Back up or restore</button></div>';
+    (panel==='notes'?notesHtml():panel==='goals'?goalsHtml():timeHtml())+'<div class="foot">'+(acct?'<span class="acct">'+h(acct.email||'Signed in')+'<button class="textbtn" id="signOutBtn">Sign out</button></span>':'')+'<span id="syncNote">'+syncText()+'</span><button class="textbtn" id="bkBtn" style="align-self:flex-start;padding-left:0">Back up or restore</button></div>';
   if(fid&&$(fid))$(fid).focus();
 }
 function setPanel(p){panel=p;try{localStorage.setItem('daybook.panel',p);}catch(e){}renderSum();}
@@ -912,6 +1079,8 @@ $('cap').addEventListener('keydown',function(e){
   if(e.key==='Enter'&&!e.shiftKey&&(e.metaKey||e.ctrlKey||this.value.indexOf('\n')<0)){e.preventDefault();addFromText();}
 });
 $('capAdd').addEventListener('click',addFromText);
+$('shBtn').addEventListener('click',function(){$('shorthand').showModal();});
+$('shForm').addEventListener('submit',function(e){e.preventDefault();$('shorthand').close();});
 
 // ---------- header ----------
 $('chips').addEventListener('click',function(e){var c=e.target.closest('.daychip');if(c&&c.dataset.date){sel=c.dataset.date;render();}});
@@ -959,6 +1128,7 @@ side.addEventListener('click',function(e){
   var nx=e.target.closest('.note .x');if(nx){var nid=nx.closest('.note').dataset.id;state.notes=state.notes.filter(function(n){return n.id!==nid;});commit();return;}
   var nt=e.target.closest('.nt');if(nt){editNote(nt);return;}
   if(e.target.closest('#bkBtn')){openBackup();return;}
+  if(e.target.closest('#signOutBtn')){signOut();return;}
   if(e.target.closest('#goalNew')){openGoal(null);return;}
   var gt=e.target.closest('.gt');if(gt){openGoal(gt.closest('.goal').dataset.goal);return;}
   var st=e.target.closest('.sttl');if(st){openEditor('task',st.closest('.step').dataset.id);return;}
@@ -1213,7 +1383,7 @@ function openEditor(type,id,draft){
   $('edGoal').innerHTML='<option value="">None</option>'+state.goals.map(function(g){return '<option value="'+g.id+'"'+(o&&o.goal===g.id?' selected':'')+'>'+h(g.title)+'</option>';}).join('');
   $('edHint').textContent=isBlock?(o&&o.repeat?'Changes apply to every repeat.':'Focus blocks reserve time. Drop to-dos onto them.'):'With a deadline, Juggle tells you when to start: a day of buffer plus a day per two hours of work. Leave the day empty to park it in Later.';
   $('edDel').hidden=!id;
-  $('edG').hidden=!mcp||gState==='off'||!!(o&&o.gid);
+  $('edG').hidden=!(mcp||GCLIENT)||gState==='off'||!!(o&&o.gid);
   if(o&&o.gid)$('edHint').textContent='On Google Calendar. Moving it here does not move it there.';
   $('editor').showModal();$('edTitle').focus();
 }
@@ -1282,26 +1452,98 @@ function gErr(cal,err){
   if(cal.id&&st==='off'){delete gData[cal.label];gMerge();return;}
   gState=st;gData={};gMerge();
 }
-function gWatch(){
-  if(!mcp)return;var ws=weekStart(sel);if(ws===gWeek)return;gWeek=ws;
+// Direct Google sign-in (used when config.js has googleClientId, e.g. on Vercel)
+var GCLIENT=(window.JUGGLE_CONFIG||{}).googleClientId||'',GSCOPE='https://www.googleapis.com/auth/calendar.events',gTok=null,gTokExp=0,gTc=null;
+try{var gt0=JSON.parse(localStorage.getItem('daybook.gtok'));if(gt0&&gt0.exp>Date.now()+60000){gTok=gt0.t;gTokExp=gt0.exp;}}catch(e){}
+function gEver(){try{return localStorage.getItem('daybook.gcal')==='1';}catch(e){return false;}}
+function gHasTok(){return !!gTok&&gTokExp>Date.now()+30000;}
+function gDropTok(){gTok=null;gTokExp=0;try{localStorage.removeItem('daybook.gtok');}catch(e){}}
+if(GCLIENT)gState=gHasTok()?'ok':gEver()?'expired':'connect';
+function gConnect(){
+  var oa=window.google&&google.accounts&&google.accounts.oauth2;
+  if(!oa){gState='noload';renderCal();return;}
+  if(!gTc)gTc=oa.initTokenClient({client_id:GCLIENT,scope:GSCOPE,
+    callback:function(r){
+      if(r&&r.access_token&&oa.hasGrantedAllScopes(r,GSCOPE)){
+        gTok=r.access_token;gTokExp=Date.now()+(+r.expires_in||3600)*1000;
+        try{localStorage.setItem('daybook.gtok',JSON.stringify({t:gTok,exp:gTokExp}));localStorage.setItem('daybook.gcal','1');}catch(e){}
+        gState='ok';gWatch(true);
+      }else{gState='denied';renderCal();}
+    },
+    error_callback:function(e){if(!(e&&e.type==='popup_closed'))gState='blocked';renderCal();}
+  });
+  gTc.requestAccessToken({prompt:gEver()?'':'consent'});
+}
+function gApi(path,opt){
+  opt=opt||{};opt.headers=Object.assign({Authorization:'Bearer '+gTok},opt.headers||{});
+  return fetch('https://www.googleapis.com/calendar/v3/'+path,opt).then(function(r){
+    if(r.ok)return r.json();
+    if(r.status===401)gDropTok();
+    return r.json().catch(function(){return {};}).then(function(j){var e=new Error((j.error&&j.error.message)||('HTTP '+r.status));e.status=r.status;throw e;});
+  });
+}
+function gLoadDirect(ws){
+  if(!gHasTok()){gState=gEver()?'expired':'connect';gData={};gMerge();return;}
+  var a=encodeURIComponent(fromYmd(ws).toISOString()),b=encodeURIComponent(fromYmd(addDays(ws,7)).toISOString());
+  GCALS.forEach(function(cal){
+    gApi('calendars/'+encodeURIComponent(cal.id||'primary')+'/events?singleEvents=true&orderBy=startTime&maxResults=250&timeMin='+a+'&timeMax='+b).then(function(j){
+      if(gWeek===ws)gTake(cal,{payload:{events:j.items||[]}});
+    },function(e){
+      if(gWeek!==ws)return;
+      if(e.status===401){gState='expired';gData={};gMerge();}
+      else if(cal.id&&(e.status===403||e.status===404)){delete gData[cal.label];gMerge();}
+      else if(e.status===403){gState='denied';gData={};gMerge();}
+    });
+  });
+}
+function gWatch(force){
+  var ws=weekStart(sel);
+  if(GCLIENT){
+    if(ws===gWeek&&!force)return;
+    if(ws!==gWeek){gData={};gEvents=[];}
+    gWeek=ws;gLoadDirect(ws);return;
+  }
+  if(!mcp)return;if(ws===gWeek)return;gWeek=ws;
   gUnsubs.forEach(function(u){try{u();}catch(e){}});gUnsubs=[];gData={};gEvents=[];
   GCALS.forEach(function(cal){
     try{gUnsubs.push(mcp.watchTool(GC,'list_events',gInput(ws,cal),function(ev){if(gWeek!==ws)return;if(ev.type==='data')gTake(cal,ev.result);else gErr(cal,ev.error);},{refetchInterval:300000}));}catch(e){}
   });
 }
-cap('mcp').then(function(m){if(!m)return;mcp=m;gWatch();});
+if(GCLIENT){
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)gWatch(true);});
+  setInterval(function(){if(!document.hidden&&gHasTok())gWatch(true);},300000);
+}else cap('mcp').then(function(m){if(!m)return;mcp=m;gWatch();});
 $('gBtn').addEventListener('click',function(){
+  if(GCLIENT){gConnect();return;}
   if(!mcp||!gWeek)return;var ws=gWeek;
   GCALS.forEach(function(cal){mcp.callTool(GC,'list_events',gInput(ws,cal)).then(function(r){if(gWeek===ws)gTake(cal,r);},function(e){gErr(cal,e);});});
 });
 $('edG').addEventListener('click',function(){
-  var o=edSave();if(!o||!mcp)return;
+  var o=edSave();if(!o)return;
   commit();
   if(!o.date||o.start==null){$('edHint').textContent='Give it a day and a start time first.';return;}
-  var btn=$('edG');btn.disabled=true;btn.textContent='Adding…';
-  var inp={summary:o.title,startTime:o.date+'T'+m2t(o.start)+':00',endTime:o.date+'T'+m2t(Math.min(o.start+o.dur,1439))+':00'};
-  if(o.repeat)inp.recurrenceData=[o.repeat==='daily'?'RRULE:FREQ=DAILY':o.repeat==='weekdays'?'RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR':'RRULE:FREQ=WEEKLY'];
+  var btn=$('edG');
   function reset(){btn.disabled=false;btn.textContent='Add to Google Calendar';}
+  var startT=o.date+'T'+m2t(o.start)+':00',endT=o.date+'T'+m2t(Math.min(o.start+o.dur,1439))+':00';
+  var rr=o.repeat?[o.repeat==='daily'?'RRULE:FREQ=DAILY':o.repeat==='weekdays'?'RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR':'RRULE:FREQ=WEEKLY']:null;
+  if(GCLIENT){
+    if(!gHasTok()){$('edHint').textContent='Connect Google Calendar first, with the button above the calendar, then try again.';return;}
+    btn.disabled=true;btn.textContent='Adding…';
+    var tz='Europe/London';try{tz=Intl.DateTimeFormat().resolvedOptions().timeZone||tz;}catch(e){}
+    var body={summary:o.title,start:{dateTime:startT,timeZone:tz},end:{dateTime:endT,timeZone:tz}};if(rr)body.recurrence=rr;
+    gApi('calendars/primary/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(j){
+      o.gid=j&&j.id||'added';reset();$('editor').close();commit();gWatch(true);
+    },function(e){
+      reset();
+      $('edHint').textContent=e.status===401?'Your Google connection has expired. Reconnect above the calendar, then try again.':
+        e.status===403||e.status===400?'Google refused it: '+String(e.message||'no reason given').slice(0,120):
+        'Google did not confirm. Check your calendar before trying again.';
+    });
+    return;
+  }
+  if(!mcp)return;
+  btn.disabled=true;btn.textContent='Adding…';
+  var inp={summary:o.title,startTime:startT,endTime:endT};if(rr)inp.recurrenceData=rr;
   mcp.callTool(GC,'create_event',inp).then(function(res){
     var p=res&&res.payload;o.gid=(p&&(p.id||(p.event&&p.event.id)))||'added';
     reset();$('editor').close();commit();
