@@ -413,6 +413,9 @@ button.wsub h3{font:500 11.5px var(--ui);color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 32px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px 10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.16);font-size:13px}
 .toast .primary{white-space:nowrap}
 
+.dtable tr.brow-t{cursor:pointer}
+.dtable tr.brow-t:hover td{background:var(--bg)}
+
 /* dialogs */
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0;width:min(440px,calc(100vw - 32px));box-shadow:0 16px 48px rgba(0,0,0,.18)}
 dialog::backdrop{background:rgba(10,12,16,.35)}
@@ -1036,6 +1039,12 @@ function stopTimer(endAt){
   if(task&&e-t.s>=60000)amendTask(task,t.s);
 }
 function loggedMs(t){return state.sessions.reduce(function(a,x){return a+(x.t===t.id?x.e-x.s:0);},0);}
+function removeOrphan(id){
+  var removed=state.sessions.filter(function(x){return x.t===id;});if(!removed.length)return;
+  var ms=removed.reduce(function(a,x){return a+(x.e-x.s);},0);
+  state.sessions=state.sessions.filter(function(x){return x.t!==id;});commit();
+  toast('Removed '+fmt(ms)+' of tracked time.','Undo',function(){state.sessions=state.sessions.concat(removed);commit();});
+}
 function syncSessionsToDur(t){
   var ss=state.sessions.filter(function(x){return x.t===t.id;}).sort(function(a,b){return a.s-b.s;});
   if(!ss.length)return;var diff=t.dur*6e4-loggedMs(t),now=Date.now();
@@ -1751,9 +1760,13 @@ $('edTimer').addEventListener('click',function(){
 });
 $('edDel').addEventListener('click',function(){
   if(!ed||!ed.id)return;
-  if(ed.type==='task'){state.tasks=state.tasks.filter(function(x){return x.id!==ed.id;});if(state.timer&&state.timer.task===ed.id)stopTimer();}
-  else state.blocks=state.blocks.filter(function(x){return x.id!==ed.id;});
+  var gone=null;
+  if(ed.type==='task'){
+    gone=taskById(ed.id);state.tasks=state.tasks.filter(function(x){return x.id!==ed.id;});
+    if(state.timer&&state.timer.task===ed.id)state.timer=null;
+  }else state.blocks=state.blocks.filter(function(x){return x.id!==ed.id;});
   $('editor').close();commit();
+  if(gone){var lm=loggedMs(gone);if(lm>=6e4)toast('Deleted "'+(gone.title.length>36?gone.title.slice(0,34)+'…':gone.title)+'". Its '+fmt(lm)+' of tracked time still counts.','Remove that time too',function(){removeOrphan(gone.id);});}
 });
 function edSave(){
   if(!ed)return null;
@@ -2217,7 +2230,7 @@ function drawTop(r,inR){
   var ids=Object.keys(by).filter(function(k){return by[k]>=6e4;}).sort(function(a,b){return by[b]-by[a];}).slice(0,8);
   if(!ids.length){$('cTop').innerHTML='<div class="dempty">Time a to-do with ▶ to see where the hours go.</div>';return;}
   $('cTop').innerHTML='<table class="dtable"><tr><th>To-do</th><th class="n">Time</th></tr>'+ids.map(function(id){var t=taskById(id),c=t?cat(t.cat):cat('unsorted');
-    return '<tr><td><span class="tt"><i class="sw" style="--c:'+h(cc(c))+'"></i><span>'+h(t?t.title:'A deleted to-do')+'</span></span></td><td class="n">'+fmt(by[id])+'</td></tr>';}).join('')+'</table>';
+    return '<tr'+(t?' class="brow-t" data-edit="'+id+'" tabindex="0" role="button" title="Open to see or fix its tracked time"':'')+'><td><span class="tt"><i class="sw" style="--c:'+h(cc(c))+'"></i><span>'+h(t?t.title:'A deleted to-do')+'</span>'+(t?'':'<button class="textbtn" data-rmorphan="'+h(id)+'" style="font-size:12px;margin-left:auto">Remove</button>')+'</span></td><td class="n">'+fmt(by[id])+'</td></tr>';}).join('')+'</table>';
 }
 function tipShow(el,x,y){
   if(!tipEl){tipEl=document.createElement('div');tipEl.className='tip';tipEl.setAttribute('role','tooltip');document.body.appendChild(tipEl);}
@@ -2232,8 +2245,8 @@ $('dash').addEventListener('pointerleave',tipHide);
 $('dash').addEventListener('scroll',tipHide);
 $('dash').addEventListener('focusin',function(e){var t=e.target.closest&&e.target.closest('[data-tip]');if(t){var b=t.getBoundingClientRect();tipShow(t,b.left+b.width/2,b.top+b.height/2);}});
 $('dash').addEventListener('focusout',tipHide);
-$('dash').addEventListener('click',function(e){var b=e.target.closest('[data-range]');if(b){dashRange=b.dataset.range;renderDash();return;}var be=e.target.closest('[data-edit]');if(be)openEditor('task',be.dataset.edit);});
-$('dash').addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target.matches('.brow')){e.preventDefault();openEditor('task',e.target.dataset.edit);}});
+$('dash').addEventListener('click',function(e){var b=e.target.closest('[data-range]');if(b){dashRange=b.dataset.range;renderDash();return;}var rmo=e.target.closest('[data-rmorphan]');if(rmo){removeOrphan(rmo.dataset.rmorphan);return;}var be=e.target.closest('[data-edit]');if(be)openEditor('task',be.dataset.edit);});
+$('dash').addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target.matches('.brow,.brow-t')){e.preventDefault();openEditor('task',e.target.dataset.edit);}});
 $('dash').addEventListener('toggle',function(e){var d=e.target;if(d.matches&&d.matches('details.bl'))blOpen[d.dataset.bl]=d.open;},true);
 var rzT=null;window.addEventListener('resize',function(){clearTimeout(rzT);rzT=setTimeout(function(){if(view==='insights')renderDash();if(panelHidden)renderSum();},150);});
 
