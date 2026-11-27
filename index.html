@@ -398,6 +398,21 @@ button.wsub h3{font:500 11.5px var(--ui);color:var(--muted)}
 .dline .dlab{pointer-events:auto;position:absolute;right:3px;bottom:2px;max-width:calc(100% - 10px);background:var(--dc);color:var(--surface);font:500 10.5px/1.5 var(--ui);padding:0 6px;border-radius:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dline.s-over{--dc:var(--over)}.dline.s-warn{--dc:var(--warn)}.dline.s-n{--dc:var(--ink)}
 
+/* time log, timer adjust, toast */
+#timerBox button.elapsed{font:500 20px var(--mono);letter-spacing:-.02em;border-radius:6px;padding:0 4px}
+#timerBox button.elapsed:hover{background:var(--line)}
+.tlog{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:10px}
+.tlhead{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.tlhead .mono{color:var(--ink)}
+.tlhead .textbtn{margin-left:auto;font-size:12px}
+.tlrows{display:flex;flex-direction:column;gap:5px;max-height:190px;overflow:auto}
+.tlrow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 10px minmax(0,1fr) 56px 22px;gap:6px;align-items:center;font-size:12px}
+.tlrow input{border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:4px 6px;font-size:12.5px;min-width:0;width:100%}
+.tlrow input:focus{outline:none;border-color:var(--ink)}
+.tlrow .mono{color:var(--muted);text-align:right;font-size:11.5px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 32px));background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px 10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.16);font-size:13px}
+.toast .primary{white-space:nowrap}
+
 /* dialogs */
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0;width:min(440px,calc(100vw - 32px));box-shadow:0 16px 48px rgba(0,0,0,.18)}
 dialog::backdrop{background:rgba(10,12,16,.35)}
@@ -537,6 +552,7 @@ dialog h2{font-size:15px}
       <label class="f">Goal<select id="edGoal"></select></label>
       <label class="f chkf">Important<input type="checkbox" id="edImp"></label>
     </div>
+    <div class="tlog" id="edLog" hidden></div>
     <div class="sub" id="edHint"></div>
     <div class="acts">
       <button type="button" class="danger" id="edDel">Delete</button>
@@ -605,6 +621,25 @@ dialog h2{font-size:15px}
     <div class="acts"><div class="spacer"></div><button type="submit" class="primary">Close</button></div>
   </form>
 </dialog>
+
+<dialog id="tadj">
+  <form id="tadjForm">
+    <h2>Adjust timer</h2>
+    <div class="sub" id="tadjWhat"></div>
+    <div class="two">
+      <label class="f">Started at<input type="time" id="tadjStart" step="60"></label>
+      <label class="f">Stopped at<input type="time" id="tadjEnd" step="60"></label>
+    </div>
+    <div class="sub" id="tadjMsg" role="status"></div>
+    <div class="acts">
+      <button type="button" class="textbtn" id="tadjCancel">Cancel</button>
+      <div class="spacer"></div>
+      <button type="button" class="textbtn" id="tadjKeep">Change start, keep running</button>
+      <button type="submit" class="primary">Stop at that time</button>
+    </div>
+  </form>
+</dialog>
+<div class="toast" id="toast" role="status" hidden></div>
 
 <dialog id="goalDlg">
   <form id="goalForm">
@@ -865,7 +900,7 @@ function commit(){state.updatedAt=Date.now();prune();saveLocal();push();render()
 function setSync(s){sync=s;var el=$('syncNote');if(el)el.textContent=syncText();}
 function syncText(){return sync==='synced'?'Synced to your account':sync==='connecting'?'Connecting…':sync==='offline'?'Offline. Changes are kept on this device and sync when you reconnect.':sync==='error'?'Couldn’t save to your account. Changes are kept on this device.':cloudOn?'Saved on this device':'Saved on this device. Sign-in is not set up yet.';}
 // ---------- account and cloud sync (Supabase) ----------
-function busy(){var a=document.activeElement;return !!drag||$('editor').open||$('settings').open||$('goalDlg').open||$('backup').open||$('matrix').open||!!(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&a.type!=='checkbox'&&a.value);}
+function busy(){var a=document.activeElement;return !!drag||$('editor').open||$('settings').open||$('goalDlg').open||$('backup').open||$('tadj').open||$('matrix').open||!!(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&a.type!=='checkbox'&&a.value);}
 var hydrated=false,freshDevice=false;
 function mergeInto(remote,local){
   var out=normalize(JSON.parse(JSON.stringify(remote))),added=0;
@@ -993,12 +1028,31 @@ function amendTask(task,at){
   }
   task.dur=Math.min(Math.max(15,Math.round(spent/3e5)*5),END*60-task.start);
 }
-function stopTimer(){
+function stopTimer(endAt){
   var t=state.timer;if(!t)return;
-  var e=Date.now();if(e-t.s>=5000)state.sessions.push({t:t.task||null,cat:t.cat,s:t.s,e:e});
+  var e=Math.min(endAt||Date.now(),Date.now());if(e-t.s>=5000)state.sessions.push({t:t.task||null,cat:t.cat,s:t.s,e:e});
   state.timer=null;
   var task=t.task&&state.tasks.find(function(x){return x.id===t.task;});
   if(task&&e-t.s>=60000)amendTask(task,t.s);
+}
+function loggedMs(t){return state.sessions.reduce(function(a,x){return a+(x.t===t.id?x.e-x.s:0);},0);}
+function syncSessionsToDur(t){
+  var ss=state.sessions.filter(function(x){return x.t===t.id;}).sort(function(a,b){return a.s-b.s;});
+  if(!ss.length)return;var diff=t.dur*6e4-loggedMs(t),now=Date.now();
+  if(diff<0){for(var i=ss.length-1;i>=0&&diff<0;i--){var cut=Math.min(ss[i].e-ss[i].s,-diff);ss[i].e-=cut;diff+=cut;}}
+  else if(diff>0){var last=ss[ss.length-1];if(last.e+diff<=now)last.e+=diff;else last.s-=diff;}
+  state.sessions=state.sessions.filter(function(x){return x.t!==t.id||x.e-x.s>=5000;});
+}
+var toastT=null;
+function toast(msg,label,fn){
+  var el=$('toast');el.innerHTML='<span>'+h(msg)+'</span>'+(label?'<button class="primary" id="toastAct">'+h(label)+'</button>':'')+'<button class="textbtn" id="toastX" aria-label="Dismiss">×</button>';
+  el.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){el.hidden=true;},12000);
+  el.onclick=function(e){if(e.target.id==='toastAct'){el.hidden=true;fn();}else if(e.target.id==='toastX')el.hidden=true;};
+}
+function offerSync(t){
+  if(!t||(state.timer&&state.timer.task===t.id))return;
+  var got=loggedMs(t),want=t.dur*6e4;if(!got||Math.abs(got-want)<3e5)return;
+  toast('"'+(t.title.length>40?t.title.slice(0,38)+'…':t.title)+'" has '+fmt(got)+' tracked. Change it to '+fmt(want)+' to match?','Change tracked time',function(){syncSessionsToDur(t);commit();});
 }
 function setDone(t,v){
   t.done=!!v;t.doneAt=v?Date.now():null;
@@ -1058,7 +1112,7 @@ function renderTimer(){
     pick=timerNaming?'<input id="timerNew" placeholder="Name the to-do, then Enter" autocomplete="off" aria-label="New to-do for this timer">':
       '<select id="timerAssign" aria-label="Which to-do is this time for?"><option value="">Which to-do?</option>'+open.slice(0,40).map(function(x){return '<option value="'+x.id+'">'+h(x.title.length>50?x.title.slice(0,48)+'…':x.title)+'</option>';}).join('')+'<option value="__new">+ New to-do…</option></select>';
   }
-  box.innerHTML='<span class="live"></span><span class="elapsed" id="elapsed">'+clock(Date.now()-t.s)+'</span>'+(task?'<span class="what">'+h(task.title)+'</span>':'<span class="what">'+h(cat(t.cat).name)+'</span>'+pick)+
+  box.innerHTML='<span class="live"></span><button class="elapsed" id="elapsed" title="Change when it started or stopped" aria-label="Running for '+clock(Date.now()-t.s)+'. Adjust the timer">'+clock(Date.now()-t.s)+'</button>'+(task?'<span class="what">'+h(task.title)+'</span>':'<span class="what">'+h(cat(t.cat).name)+'</span>'+pick)+
     (task?'<button class="tdone" id="timerDone" title="Mark this to-do done and set its length to the time spent">✓ Done</button>':'')+
     '<button class="stop" id="stopBtn">Stop</button><button class="textbtn tcol" id="timerToggle" title="Make the timer smaller" aria-label="Make the timer smaller">–</button>';
   if(timerNaming&&$('timerNew'))$('timerNew').focus();
@@ -1332,7 +1386,35 @@ $('timerBox').addEventListener('keydown',function(e){
   if(nt.cat==='unsorted')nt.cat=state.timer.cat;
   state.tasks.push(nt);timerNaming=false;assignTimer(nt.id);
 });
+function hm(ms){var d=new Date(ms);return pad(d.getHours())+':'+pad(d.getMinutes());}
+function atTime(v,refMs){var m=t2m(v);if(m==null)return null;var d=new Date(refMs);d.setHours(Math.floor(m/60),m%60,0,0);return d.getTime();}
+function openTadj(){
+  var t=state.timer;if(!t)return;var task=taskById(t.task);
+  $('tadjWhat').textContent=(task?task.title:cat(t.cat).name)+' · running for '+fmt(Date.now()-t.s);
+  $('tadjStart').value=hm(t.s);$('tadjEnd').value=hm(Date.now());$('tadjMsg').textContent='';$('tadj').showModal();$('tadjEnd').focus();
+}
+function tadjStart(){
+  var t=state.timer,now=Date.now(),st=atTime($('tadjStart').value,t.s);
+  if(st==null){$('tadjMsg').textContent='Enter a start time.';return null;}
+  if(st>now)st-=864e5;
+  return st;
+}
+$('tadjCancel').addEventListener('click',function(){$('tadj').close();});
+$('tadjKeep').addEventListener('click',function(){
+  if(!state.timer)return;var st=tadjStart();if(st==null)return;
+  state.timer.s=st;$('tadj').close();commit();
+});
+$('tadjForm').addEventListener('submit',function(e){
+  e.preventDefault();if(!state.timer)return;
+  var st=tadjStart();if(st==null)return;
+  var now=Date.now(),en=atTime($('tadjEnd').value,now);
+  if(en==null){$('tadjMsg').textContent='Enter the time you actually stopped.';return;}
+  if(en>now+6e4)en-=864e5;
+  if(en<=st){$('tadjMsg').textContent='The stop time needs to be after the start time.';return;}
+  state.timer.s=st;stopTimer(en);$('tadj').close();commit();
+});
 $('timerBox').addEventListener('click',function(e){
+  if(e.target.closest('#elapsed')){openTadj();return;}
   if(e.target.closest('#timerDone')){var tk=state.timer&&taskById(state.timer.task);if(tk){setDone(tk,true);commit();}return;}
   if(e.target.closest('#timerToggle')){timerMin=!timerMin;try{localStorage.setItem('daybook.timermin',timerMin?'1':'0');}catch(x){}renderTimer();var tg=$('timerToggle');if(tg)tg.focus();return;}if(e.target.closest('#stopBtn')){stopTimer();commit();}});
 
@@ -1573,7 +1655,7 @@ function endDrag(e){
   }
   suppressClick=true;setTimeout(function(){suppressClick=false;},0);
   if(e.type==='pointercancel'){render();return;}
-  if(d.mode==='resize'){d.o.dur=d.dur;commit();return;}
+  if(d.mode==='resize'){d.o.dur=d.dur;commit();if(d.type==='task')offerSync(d.o);return;}
   var t=d.target;if(!t){render();return;}
   if('chip' in t){
     var nd=/^\d{4}-/.test(t.chip)?t.chip:null;
@@ -1618,6 +1700,25 @@ $('addFocus').addEventListener('click',function(){
 
 // ---------- editor ----------
 var ed=null;
+var logRows=null,logDirty=false;
+function renderLog(task){
+  var box=$('edLog');if(!task){box.hidden=true;box.innerHTML='';return;}
+  if(!logRows)logRows=state.sessions.filter(function(x){return x.t===task.id;}).sort(function(a,b){return b.s-a.s;}).map(function(x){return {d:ymd(new Date(x.s)),s:hm(x.s),e:hm(x.e)};});
+  var running=state.timer&&state.timer.task===task.id,tot=0;
+  logRows.forEach(function(r){var a=t2m(r.s),b=t2m(r.e);if(r.d&&a!=null&&b!=null){var m=b-a;if(m<=0)m+=1440;tot+=m*6e4;}});
+  box.hidden=false;
+  box.innerHTML='<div class="tlhead"><span>Time tracked</span><span class="mono" id="logTot">'+fmt(tot)+(running?' + timer running':'')+'</span><button type="button" class="textbtn" id="logAdd">+ Add time</button></div>'+
+    (logRows.length?'<div class="tlrows">'+logRows.map(function(r,i){var a=t2m(r.s),b=t2m(r.e),m=a!=null&&b!=null?(b-a<=0?b-a+1440:b-a):null;
+      return '<div class="tlrow" data-i="'+i+'"><input type="date" id="lgd-'+i+'" value="'+(r.d||'')+'" aria-label="Day"><input type="time" id="lgs-'+i+'" value="'+(r.s||'')+'" aria-label="Start"><span>–</span><input type="time" id="lge-'+i+'" value="'+(r.e||'')+'" aria-label="End"><span class="mono">'+(m!=null?fmt(m*6e4):'')+'</span><button type="button" class="x" data-del="'+i+'" aria-label="Remove this entry">×</button></div>';}).join('')+'</div>':
+     '<div class="sub">Nothing tracked yet. Press ▶ to time it, or add time you forgot to track.</div>');
+}
+function pullLog(){if(!logRows)return;logRows.forEach(function(r,i){if($('lgd-'+i)){r.d=$('lgd-'+i).value;r.s=$('lgs-'+i).value;r.e=$('lge-'+i).value;}});}
+$('edLog').addEventListener('click',function(e){
+  var task=ed&&ed.type==='task'&&taskById(ed.id);if(!task)return;
+  if(e.target.closest('#logAdd')){pullLog();var n=new Date();logRows.unshift({d:ymd(n),s:'',e:hm(n.getTime())});logDirty=true;renderLog(task);var f=$('lgs-0');if(f)f.focus();return;}
+  var dl=e.target.closest('[data-del]');if(dl){pullLog();logRows.splice(+dl.dataset.del,1);logDirty=true;renderLog(task);}
+});
+$('edLog').addEventListener('change',function(){var task=ed&&taskById(ed.id);if(!task)return;pullLog();logDirty=true;renderLog(task);});
 function openEditor(type,id,draft){
   var o=id?(type==='task'?taskById(id):state.blocks.find(function(b){return b.id===id;})):null;
   if(id&&!o)return;
@@ -1637,6 +1738,7 @@ function openEditor(type,id,draft){
   $('edGoal').innerHTML='<option value="">None</option>'+state.goals.map(function(g){return '<option value="'+g.id+'"'+(o&&o.goal===g.id?' selected':'')+'>'+h(g.title)+'</option>';}).join('');
   $('edHint').textContent=isBlock?(o&&o.repeat?'Changes apply to every repeat.':'Focus blocks reserve time. Drop to-dos onto them.'):'With a deadline, Juggle tells you when to start: a day of buffer plus a day per two hours of work. Leave the day empty to keep it in Soon or Later.';
   $('edDel').hidden=!id;
+  logRows=null;logDirty=false;renderLog(type==='task'&&o?o:null);
   $('edTimer').hidden=!(type==='task'&&o&&!o.done);if(o&&type==='task')$('edTimer').textContent=state.timer&&state.timer.task===o.id?'Stop timer':'Start timer';
   $('edG').hidden=!(mcp||GCLIENT)||gState==='off'||!!(o&&o.gid);
   if(o&&o.gid)$('edHint').textContent='On Google Calendar. Moving it here does not move it there.';
@@ -1660,8 +1762,24 @@ function edSave(){
   if(ed.type==='task'){
     var t=taskById(ed.id);if(!t)return null;
     if(!title){$('edTitle').focus();return null;}
+    var oldDur=t.dur,oldStart=t.start,oldCat=t.cat,rows=null;
+    if(logDirty){
+      pullLog();rows=[];var bad=false;
+      logRows.forEach(function(r){
+        if(!r.d&&!r.s&&!r.e)return;var a=t2m(r.s),b=t2m(r.e);
+        if(!r.d||a==null||b==null){bad=true;return;}
+        var S=fromYmd(r.d).getTime()+a*6e4,E=fromYmd(r.d).getTime()+b*6e4;if(E<=S)E+=864e5;
+        if(E-S>16*36e5||S>Date.now()){bad=true;return;}rows.push({s:S,e:Math.min(E,Date.now())});
+      });
+      if(bad){$('edHint').textContent='Check the time tracked: each entry needs a day, a start and an end, under 16 hours and not in the future.';return null;}
+    }
     t.title=title;t.cat=$('edCat').value;t.date=date;t.start=date?st:null;t.dur=dur;t.maybe=/\?\s*$/.test(title);
     t.due=$('edDue').value||null;t.dueTime=t.due?t2m($('edDueT').value):null;var es=parseFloat($('edEst').value);t.est=es>0?es:null;t.important=$('edImp').checked;t.goal=$('edGoal').value||null;
+    if(t.cat!==oldCat)state.sessions.forEach(function(x){if(x.t===t.id)x.cat=t.cat;});
+    if(rows){
+      state.sessions=state.sessions.filter(function(x){return x.t!==t.id;}).concat(rows.map(function(r){return {t:t.id,cat:t.cat,s:r.s,e:r.e};}));
+      var tot=loggedMs(t);if(tot>=6e4){if(t.start!=null)t.dur=Math.min(Math.max(15,Math.round(tot/3e5)*5),END*60-t.start);else amendTask(t);}
+    }else if(t.start!=null&&oldStart!=null&&t.dur!==oldDur){setTimeout(function(){offerSync(t);},0);}
     return t;
   }
   if(st==null){$('edStart').focus();return null;}
